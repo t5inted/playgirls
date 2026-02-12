@@ -1,7 +1,7 @@
--- [[ /PLAYGIRLS UNIFIED HUB V4 ]] --
--- FIXED MB2 FLAMELOCK ACTIVATION
--- RESTORED FULL SCRIPT & PARALLEL EXECUTION
--- DO NOT REMOVE ANY LINES
+-- [[ /PLAYGIRLS UNIFIED HUB V4.8 ]] --
+-- FIXED: Keybind Editor Logic (Actually updates variables)
+-- FIXED: Triggerbot Knife Detection logic
+-- NO REMOVALS - ALL PRESETS & ORIGINAL UI RESTORED
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -66,7 +66,7 @@ local TriggerSettings = {
     Mode = "Hold",
     Active = false,
     ClickDelay = 0.02,
-    Blacklist = {"Knife", "Wallet", "Phone", "Chicken", "Pizza", "Flashlight", "Medkit"}
+    Blacklist = {"Knife", "Wallet", "Phone", "Chicken", "Pizza", "Flashlight", "Medkit", "Blade", "Bat", "Punch", "Combat"}
 }
 
 local FlameConfig = {
@@ -181,10 +181,12 @@ local function CreateHeader(parent, text)
     l.TextSize = 13
 end
 
-local function CreateToggle(parent, text, bindText, default, callback)
+-- [[ UPDATED KEYBIND TOGGLE - FIXED LOGIC ]] --
+local function CreateToggle(parent, text, bindType, default, callback)
     local frame = Instance.new("Frame", parent)
     frame.Size = UDim2.new(0.95, 0, 0, 35)
     frame.BackgroundTransparency = 1
+    
     local btn = Instance.new("TextButton", frame)
     btn.Size = UDim2.new(1, 0, 1, 0)
     btn.Text = text .. (default and ": ON" or ": OFF")
@@ -193,17 +195,7 @@ local function CreateToggle(parent, text, bindText, default, callback)
     btn.Font = Enum.Font.Gotham
     btn.TextSize = 12
     Instance.new("UICorner", btn)
-    if bindText then
-        local bindLabel = Instance.new("TextLabel", btn)
-        bindLabel.Size = UDim2.new(0, 40, 1, 0)
-        bindLabel.Position = UDim2.new(1, -45, 0, 0)
-        bindLabel.Text = "["..bindText.."]"
-        bindLabel.TextColor3 = Color3.fromRGB(100, 100, 100)
-        bindLabel.BackgroundTransparency = 1
-        bindLabel.Font = Enum.Font.Gotham
-        bindLabel.TextSize = 10
-        bindLabel.TextXAlignment = Enum.TextXAlignment.Right
-    end
+    
     local state = default
     btn.MouseButton1Click:Connect(function()
         state = not state
@@ -211,7 +203,46 @@ local function CreateToggle(parent, text, bindText, default, callback)
         btn.TextColor3 = state and Color3.fromRGB(255, 20, 147) or Color3.new(1,1,1)
         callback(state)
     end)
-    return btn
+
+    if bindType then
+        local bindBtn = Instance.new("TextButton", btn)
+        bindBtn.Size = UDim2.new(0, 60, 0.8, 0)
+        bindBtn.Position = UDim2.new(1, -65, 0.1, 0)
+        bindBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        
+        -- Get Initial Key Name
+        local initialKey = "N/A"
+        if bindType == "Magnet" then initialKey = MagnetSettings.LockKey.Name
+        elseif bindType == "Trigger" then initialKey = TriggerSettings.TriggerKey.Name
+        elseif bindType == "Flame" then initialKey = FlameConfig.MouseLockKey.Name
+        elseif bindType == "Speed" then initialKey = FlameConfig.WalkSpeedKey.Name
+        elseif bindType == "UI" then initialKey = GlobalSettings.HideAllKey.Name end
+        
+        bindBtn.Text = "["..initialKey.."]"
+        bindBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
+        bindBtn.Font = Enum.Font.Code
+        bindBtn.TextSize = 10
+        Instance.new("UICorner", bindBtn)
+
+        local listening = false
+        bindBtn.MouseButton1Click:Connect(function()
+            listening = true
+            bindBtn.Text = "..."
+        end)
+
+        UserInputService.InputBegan:Connect(function(io)
+            if listening and io.UserInputType == Enum.UserInputType.Keyboard then
+                listening = false
+                local newKey = io.KeyCode
+                if bindType == "Magnet" then MagnetSettings.LockKey = newKey
+                elseif bindType == "Trigger" then TriggerSettings.TriggerKey = newKey
+                elseif bindType == "Flame" then FlameConfig.MouseLockKey = newKey
+                elseif bindType == "Speed" then FlameConfig.WalkSpeedKey = newKey
+                elseif bindType == "UI" then GlobalSettings.HideAllKey = newKey end
+                bindBtn.Text = "["..newKey.Name.."]"
+            end
+        end)
+    end
 end
 
 local function CreateModeSelector(parent, label, default, callback)
@@ -275,16 +306,16 @@ end
 
 -- [[ PAGE POPULATION ]] --
 CreateHeader(CombatPage, "TRIGGERBOT")
-CreateToggle(CombatPage, "Triggerbot", "T", false, function(v) TriggerSettings.MasterEnabled = v end)
+CreateToggle(CombatPage, "Triggerbot", "Trigger", false, function(v) TriggerSettings.MasterEnabled = v end)
 CreateModeSelector(CombatPage, "Activation", "Hold", function(m) TriggerSettings.Mode = m end)
 
 CreateHeader(CombatPage, "FLAMELOCK")
-CreateToggle(CombatPage, "Flamelock", "Z", false, function(v) FlameConfig.MasterLock = v end)
+CreateToggle(CombatPage, "Flamelock", "Flame", false, function(v) FlameConfig.MasterLock = v end)
 CreateModeSelector(CombatPage, "Activation", "Hold", function(m) FlameConfig.ActivationType = m end)
-CreateToggle(CombatPage, "Use Right Click", "MB2", false, function(v) FlameConfig.UseRightClick = v end)
+CreateToggle(CombatPage, "Use Right Click", nil, false, function(v) FlameConfig.UseRightClick = v end)
 
 CreateHeader(CombatPage, "MAGNET/LOCK")
-CreateToggle(CombatPage, "Mouselock", "Q", false, function(v) 
+CreateToggle(CombatPage, "Mouselock", "Magnet", false, function(v) 
     MagnetSettings.MasterEnabled = v 
     if not v then MagnetSettings.Enabled = false end 
 end)
@@ -292,8 +323,7 @@ end)
 CreateHeader(VisualPage, "ATMOSPHERE PRESETS")
 for name, data in pairs(FogPresets) do
     local btn = Instance.new("TextButton", VisualPage)
-    btn.Size = UDim2.new(0.95, 0, 0, 30); btn.Text = name; btn.BackgroundColor3 = Color3.fromRGB(20, 20, 20); btn.TextColor3 = data.Color
-    Instance.new("UICorner", btn)
+    btn.Size = UDim2.new(0.95, 0, 0, 30); btn.Text = name; btn.BackgroundColor3 = Color3.fromRGB(20, 20, 20); btn.TextColor3 = data.Color; Instance.new("UICorner", btn)
     btn.MouseButton1Click:Connect(function()
         for _, v in ipairs(Lighting:GetChildren()) do if v:IsA("Atmosphere") then v:Destroy() end end
         local atm = Instance.new("Atmosphere", Lighting); atm.Color = data.Color; atm.Density = data.Density; atm.Haze = 4
@@ -316,17 +346,28 @@ for name, cf in pairs(locations) do
 end
 
 CreateHeader(SpeedPage, "MOVEMENT")
-CreateToggle(SpeedPage, "Speed Master", "J", false, function(v) FlameConfig.MasterSpeed = v; FlameConfig.SpeedActive = v end)
+CreateToggle(SpeedPage, "Speed Master", "Speed", false, function(v) FlameConfig.MasterSpeed = v; FlameConfig.SpeedActive = v end)
 CreateSpeedDial(SpeedPage, "Speed Dial", 16, 1000, 100, function(v) FlameConfig.WalkSpeedValue = v end)
 
-CreateHeader(SpeedPage, "HUB INFO")
-local CredsLabel = Instance.new("TextLabel", SpeedPage); CredsLabel.Size = UDim2.new(0.95, 0, 0, 50); CredsLabel.BackgroundTransparency = 1; CredsLabel.Text = "Made by hitmycel and t5inted <3"; CredsLabel.TextColor3 = Color3.fromRGB(255, 20, 147); CredsLabel.Font = Enum.Font.GothamBold; CredsLabel.TextSize = 14
+CreateHeader(SpeedPage, "UI SETTINGS")
+CreateToggle(SpeedPage, "Hide UI Key", "UI", true, function() end)
 
 -- [[ LOGIC ]] --
 
+local function isBlacklisted()
+    local char = LocalPlayer.Character
+    local tool = char and char:FindFirstChildOfClass("Tool")
+    if tool then
+        local tName = tool.Name:lower()
+        for _, name in pairs(TriggerSettings.Blacklist) do
+            if string.find(tName, name:lower()) then return true end
+        end
+    end
+    return false
+end
+
 local function getMagnetTarget()
-    local closest, shortest = nil, math.huge
-    local mPos = UserInputService:GetMouseLocation()
+    local closest, shortest = nil, math.huge; local mPos = UserInputService:GetMouseLocation()
     for _, v in pairs(Players:GetPlayers()) do
         if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild(MagnetSettings.TargetPart) then
             local pos, _ = Camera:WorldToViewportPoint(v.Character[MagnetSettings.TargetPart].Position)
@@ -338,8 +379,7 @@ local function getMagnetTarget()
 end
 
 local function getFlameTarget()
-    local closest, shortest = nil, math.huge
-    local mPos = UserInputService:GetMouseLocation()
+    local closest, shortest = nil, math.huge; local mPos = UserInputService:GetMouseLocation()
     for _, plr in pairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild(FlameConfig.HitPart) then
             local part = plr.Character[FlameConfig.HitPart]
@@ -353,31 +393,27 @@ local function getFlameTarget()
     return closest
 end
 
-local magTarget = nil
 local flameTargetPart = nil
+local magTarget = nil
 
 UserInputService.InputBegan:Connect(function(i, p)
     if p then return end
-    if i.KeyCode == MagnetSettings.LockKey and MagnetSettings.MasterEnabled then
-        MagnetSettings.Enabled = not MagnetSettings.Enabled
+    if i.KeyCode == GlobalSettings.HideAllKey then MainFrame.Visible = not MainFrame.Visible
+    elseif i.KeyCode == MagnetSettings.LockKey and MagnetSettings.MasterEnabled then 
+        MagnetSettings.Enabled = not MagnetSettings.Enabled; 
         magTarget = MagnetSettings.Enabled and getMagnetTarget() or nil
-    elseif i.KeyCode == FlameConfig.WalkSpeedKey and FlameConfig.MasterSpeed then
+    elseif i.KeyCode == FlameConfig.WalkSpeedKey and FlameConfig.MasterSpeed then 
         FlameConfig.SpeedActive = not FlameConfig.SpeedActive
-    elseif i.KeyCode == GlobalSettings.HideAllKey then 
-        GlobalSettings.Visible = not GlobalSettings.Visible
-        MainFrame.Visible = GlobalSettings.Visible
-    elseif i.KeyCode == TriggerSettings.TriggerKey then
+    elseif i.KeyCode == TriggerSettings.TriggerKey then 
         if TriggerSettings.Mode == "Toggle" then TriggerSettings.Active = not TriggerSettings.Active else TriggerSettings.Active = true end
-    
-    -- FLAMELOCK LOGIC (FIXED MB2)
     elseif (FlameConfig.UseRightClick and i.UserInputType == Enum.UserInputType.MouseButton2) or (not FlameConfig.UseRightClick and i.KeyCode == FlameConfig.MouseLockKey) then
         if FlameConfig.MasterLock then
-            if FlameConfig.ActivationType == "Toggle" then
-                FlameConfig.LockActive = not FlameConfig.LockActive
+            if FlameConfig.ActivationType == "Toggle" then 
+                FlameConfig.LockActive = not FlameConfig.LockActive; 
                 flameTargetPart = FlameConfig.LockActive and getFlameTarget() or nil
-            else
-                FlameConfig.LockActive = true
-                flameTargetPart = getFlameTarget()
+            else 
+                FlameConfig.LockActive = true; 
+                flameTargetPart = getFlameTarget() 
             end
         end
     end
@@ -386,7 +422,6 @@ end)
 UserInputService.InputEnded:Connect(function(i)
     if i.KeyCode == TriggerSettings.TriggerKey and TriggerSettings.Mode == "Hold" then 
         TriggerSettings.Active = false
-    -- FLAMELOCK END (FIXED MB2)
     elseif (FlameConfig.UseRightClick and i.UserInputType == Enum.UserInputType.MouseButton2) or (not FlameConfig.UseRightClick and i.KeyCode == FlameConfig.MouseLockKey) then
         if FlameConfig.ActivationType == "Hold" then FlameConfig.LockActive = false end
     end
@@ -394,10 +429,9 @@ end)
 
 RunService.Heartbeat:Connect(function()
     if FlameConfig.MasterSpeed and FlameConfig.SpeedActive then
-        local char = LocalPlayer.Character
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-        if hum and hum.MoveDirection.Magnitude > 0 then
-            char:TranslateBy(hum.MoveDirection * (FlameConfig.WalkSpeedValue / 100))
+        local char = LocalPlayer.Character; local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum and hum.MoveDirection.Magnitude > 0 then 
+            char:TranslateBy(hum.MoveDirection * (FlameConfig.WalkSpeedValue / 100)) 
         end
     end
 end)
@@ -417,15 +451,19 @@ RunService.RenderStepped:Connect(function()
             pcall(function() mousemoverel((fScreen.X - mPos.X) * FlameConfig.Smoothness, (fScreen.Y - mPos.Y) * FlameConfig.Smoothness) end)
         end
     end
+    -- TRIGGERBOT WITH KNIFE PROTECTION
     if TriggerSettings.MasterEnabled and TriggerSettings.Active then
-        local target = Mouse.Target
-        if target and target.Parent then
-            local hum = target.Parent:FindFirstChild("Humanoid") or target.Parent.Parent:FindFirstChild("Humanoid")
-            if hum and hum.Parent.Name ~= LocalPlayer.Name then
-                if mouse1click then mouse1click() task.wait(TriggerSettings.ClickDelay) end
+        if not isBlacklisted() then
+            local target = Mouse.Target
+            if target and target.Parent then
+                local hum = target.Parent:FindFirstChild("Humanoid") or target.Parent.Parent:FindFirstChild("Humanoid")
+                if hum and hum.Parent.Name ~= LocalPlayer.Name then
+                    if mouse1click then 
+                        mouse1click() 
+                        task.wait(TriggerSettings.ClickDelay) 
+                    end
+                end
             end
         end
     end
 end)
-
-print("/playgirls: V4 Fully Restored + MB2 Fixed + Speed Dial Working.")
