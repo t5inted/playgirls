@@ -1,12 +1,10 @@
--- [[ /PLAYGIRLS UNIFIED HUB V4.8 ]] --
--- FIXED: Keybind Editor Logic (Actually updates variables)
--- FIXED: Triggerbot Knife Detection logic
--- NO REMOVALS - ALL PRESETS & ORIGINAL UI RESTORED
+-- [[ /PLAYGIRLS UNIFIED HUB V4.9 - PERFORMANCE OPTIMIZED ]] --
+-- MERGED: V4.8 Combat Logic + V4.9 Optimized ESP
+-- FIXED: Visual Presets & Real-time Color Updates
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
@@ -57,6 +55,7 @@ local FogPresets = {
     ["Void Purple"] = {Color = Color3.fromRGB(138, 43, 226), Density = 0.56}, 
     ["Hell Orange"] = {Color = Color3.fromRGB(255, 140, 0), Density = 0.43}   
 }
+
 local OrigFogStart, OrigFogEnd, OrigFogColor = Lighting.FogStart, Lighting.FogEnd, Lighting.FogColor
 local OrigAtmosphere = Lighting:FindFirstChildOfClass("Atmosphere") and Lighting:FindFirstChildOfClass("Atmosphere"):Clone() or nil
 
@@ -84,6 +83,20 @@ local FlameConfig = {
     UpOffset = -10.53,
     HitPart = 'HumanoidRootPart',
     WalkSpeedValue = 100,
+}
+
+local ESPSettings = {
+    Enabled = false,
+    Box = false,
+    Skeleton = false,
+    Health = false,
+    Name = false,
+    Distance = false,
+    TeamCheck = false,
+    MaxDistance = 2000,
+    BoxColor = Color3.fromRGB(255, 20, 147),
+    SkeletonColor = Color3.fromRGB(255, 20, 147),
+    NameColor = Color3.fromRGB(255, 255, 255)
 }
 
 local locations = {
@@ -144,6 +157,7 @@ end
 
 local CombatPage = CreatePage("Combat")
 local VisualPage = CreatePage("Visuals")
+local ESPPage = CreatePage("ESP")
 local TeleportPage = CreatePage("Teleport")
 local SpeedPage = CreatePage("Speed")
 
@@ -167,8 +181,9 @@ end
 
 CreateTabBtn("Combat", 60)
 CreateTabBtn("Visuals", 100)
-CreateTabBtn("Teleport", 140)
-CreateTabBtn("Speed", 180) 
+CreateTabBtn("ESP", 140)
+CreateTabBtn("Teleport", 180)
+CreateTabBtn("Speed", 220) 
 ShowPage("Combat")
 
 local function CreateHeader(parent, text)
@@ -181,14 +196,25 @@ local function CreateHeader(parent, text)
     l.TextSize = 13
 end
 
--- [[ UPDATED KEYBIND TOGGLE - FIXED LOGIC ]] --
-local function CreateToggle(parent, text, bindType, default, callback)
+local combatIndicators = {}
+local function CreateToggle(parent, text, bindType, default, callback, hasColor, colorCallback)
     local frame = Instance.new("Frame", parent)
     frame.Size = UDim2.new(0.95, 0, 0, 35)
     frame.BackgroundTransparency = 1
     
+    local status = Instance.new("Frame", frame)
+    status.Size = UDim2.new(0, 6, 0.6, 0)
+    status.Position = UDim2.new(0, 2, 0.2, 0)
+    status.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    Instance.new("UICorner", status)
+    
+    if text == "Triggerbot" then combatIndicators.Trigger = status
+    elseif text == "Flamelock" then combatIndicators.Flame = status
+    elseif text == "Mouselock" then combatIndicators.Magnet = status end
+
     local btn = Instance.new("TextButton", frame)
-    btn.Size = UDim2.new(1, 0, 1, 0)
+    btn.Size = UDim2.new(1, -12, 1, 0)
+    btn.Position = UDim2.new(0, 12, 0, 0)
     btn.Text = text .. (default and ": ON" or ": OFF")
     btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     btn.TextColor3 = default and Color3.fromRGB(255, 20, 147) or Color3.new(1,1,1)
@@ -204,32 +230,41 @@ local function CreateToggle(parent, text, bindType, default, callback)
         callback(state)
     end)
 
+    if hasColor then
+        local cp = Instance.new("TextButton", btn)
+        cp.Size = UDim2.new(0, 16, 0, 16)
+        cp.Position = UDim2.new(1, -90, 0.5, -8)
+        cp.BackgroundColor3 = Color3.fromRGB(255, 20, 147)
+        cp.Text = ""
+        Instance.new("UICorner", cp)
+        
+        local palette = {Color3.fromRGB(255, 20, 147), Color3.new(1,0,0), Color3.new(0,1,0), Color3.new(0,0,1), Color3.new(1,1,1), Color3.new(1,1,0)}
+        local cIdx = 1
+        cp.MouseButton1Click:Connect(function()
+            cIdx = (cIdx % #palette) + 1
+            cp.BackgroundColor3 = palette[cIdx]
+            colorCallback(palette[cIdx])
+        end)
+    end
+
     if bindType then
         local bindBtn = Instance.new("TextButton", btn)
         bindBtn.Size = UDim2.new(0, 60, 0.8, 0)
         bindBtn.Position = UDim2.new(1, -65, 0.1, 0)
         bindBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-        
-        -- Get Initial Key Name
         local initialKey = "N/A"
         if bindType == "Magnet" then initialKey = MagnetSettings.LockKey.Name
         elseif bindType == "Trigger" then initialKey = TriggerSettings.TriggerKey.Name
         elseif bindType == "Flame" then initialKey = FlameConfig.MouseLockKey.Name
         elseif bindType == "Speed" then initialKey = FlameConfig.WalkSpeedKey.Name
         elseif bindType == "UI" then initialKey = GlobalSettings.HideAllKey.Name end
-        
         bindBtn.Text = "["..initialKey.."]"
         bindBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
         bindBtn.Font = Enum.Font.Code
         bindBtn.TextSize = 10
         Instance.new("UICorner", bindBtn)
-
         local listening = false
-        bindBtn.MouseButton1Click:Connect(function()
-            listening = true
-            bindBtn.Text = "..."
-        end)
-
+        bindBtn.MouseButton1Click:Connect(function() listening = true; bindBtn.Text = "..." end)
         UserInputService.InputBegan:Connect(function(io)
             if listening and io.UserInputType == Enum.UserInputType.Keyboard then
                 listening = false
@@ -251,48 +286,24 @@ local function CreateModeSelector(parent, label, default, callback)
     frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     Instance.new("UICorner", frame)
     local title = Instance.new("TextLabel", frame)
-    title.Size = UDim2.new(0.4, 0, 1, 0)
-    title.Position = UDim2.new(0.05, 0, 0, 0)
-    title.Text = label .. ":"
-    title.TextColor3 = Color3.new(1,1,1)
-    title.BackgroundTransparency = 1
-    title.Font = Enum.Font.Gotham
-    title.TextSize = 12
-    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Size = UDim2.new(0.4, 0, 1, 0); title.Position = UDim2.new(0.05, 0, 0, 0); title.Text = label .. ":"; title.TextColor3 = Color3.new(1,1,1); title.BackgroundTransparency = 1; title.Font = Enum.Font.Gotham; title.TextSize = 12; title.TextXAlignment = Enum.TextXAlignment.Left
     local btn = Instance.new("TextButton", frame)
-    btn.Size = UDim2.new(0.5, 0, 1, 0)
-    btn.Position = UDim2.new(0.45, 0, 0, 0)
-    btn.BackgroundTransparency = 1
-    btn.Font = Enum.Font.GothamSemibold
-    btn.TextSize = 12
+    btn.Size = UDim2.new(0.5, 0, 1, 0); btn.Position = UDim2.new(0.45, 0, 0, 0); btn.BackgroundTransparency = 1; btn.Font = Enum.Font.GothamSemibold; btn.TextSize = 12
     local function updateText(mode)
-        if mode == "Hold" then
-            btn.RichText = true
-            btn.Text = '<font color="rgb(255, 20, 147)">Hold</font> / <font color="rgb(100, 100, 100)">Toggle</font>'
-        else
-            btn.RichText = true
-            btn.Text = '<font color="rgb(100, 100, 100)">Hold</font> / <font color="rgb(255, 20, 147)">Toggle</font>'
-        end
+        btn.RichText = true
+        btn.Text = mode == "Hold" and '<font color="rgb(255, 20, 147)">Hold</font> / <font color="rgb(100, 100, 100)">Toggle</font>' or '<font color="rgb(100, 100, 100)">Hold</font> / <font color="rgb(255, 20, 147)">Toggle</font>'
     end
-    local current = default
-    updateText(current)
-    btn.MouseButton1Click:Connect(function()
-        current = (current == "Hold" and "Toggle" or "Hold")
-        updateText(current)
-        callback(current)
-    end)
+    local current = default; updateText(current)
+    btn.MouseButton1Click:Connect(function() current = (current == "Hold" and "Toggle" or "Hold"); updateText(current); callback(current) end)
 end
 
 local function CreateSpeedDial(parent, text, min, max, default, callback)
     local sliderFrame = Instance.new("Frame", parent)
     sliderFrame.Size = UDim2.new(0.95, 0, 0, 55)
     sliderFrame.BackgroundTransparency = 1
-    local label = Instance.new("TextLabel", sliderFrame)
-    label.Size = UDim2.new(1, 0, 0, 20); label.Text = text .. ": " .. default; label.TextColor3 = Color3.new(1,1,1); label.BackgroundTransparency = 1; label.Font = Enum.Font.Gotham; label.TextSize = 12; label.TextXAlignment = Enum.TextXAlignment.Left
-    local tray = Instance.new("Frame", sliderFrame)
-    tray.Size = UDim2.new(1, 0, 0, 8); tray.Position = UDim2.new(0, 0, 0, 30); tray.BackgroundColor3 = Color3.fromRGB(30, 30, 30); Instance.new("UICorner", tray)
-    local fill = Instance.new("Frame", tray)
-    fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0); fill.BackgroundColor3 = Color3.fromRGB(255, 20, 147); Instance.new("UICorner", fill)
+    local label = Instance.new("TextLabel", sliderFrame); label.Size = UDim2.new(1, 0, 0, 20); label.Text = text .. ": " .. default; label.TextColor3 = Color3.new(1,1,1); label.BackgroundTransparency = 1; label.Font = Enum.Font.Gotham; label.TextSize = 12; label.TextXAlignment = Enum.TextXAlignment.Left
+    local tray = Instance.new("Frame", sliderFrame); tray.Size = UDim2.new(1, 0, 0, 8); tray.Position = UDim2.new(0, 0, 0, 30); tray.BackgroundColor3 = Color3.fromRGB(30, 30, 30); Instance.new("UICorner", tray)
+    local fill = Instance.new("Frame", tray); fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0); fill.BackgroundColor3 = Color3.fromRGB(255, 20, 147); Instance.new("UICorner", fill)
     local function update(input)
         local pos = math.clamp((input.Position.X - tray.AbsolutePosition.X) / tray.AbsoluteSize.X, 0, 1)
         local val = math.floor(min + (max - min) * pos)
@@ -304,56 +315,7 @@ local function CreateSpeedDial(parent, text, min, max, default, callback)
     UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
 end
 
--- [[ PAGE POPULATION ]] --
-CreateHeader(CombatPage, "TRIGGERBOT")
-CreateToggle(CombatPage, "Triggerbot", "Trigger", false, function(v) TriggerSettings.MasterEnabled = v end)
-CreateModeSelector(CombatPage, "Activation", "Hold", function(m) TriggerSettings.Mode = m end)
-
-CreateHeader(CombatPage, "FLAMELOCK")
-CreateToggle(CombatPage, "Flamelock", "Flame", false, function(v) FlameConfig.MasterLock = v end)
-CreateModeSelector(CombatPage, "Activation", "Hold", function(m) FlameConfig.ActivationType = m end)
-CreateToggle(CombatPage, "Use Right Click", nil, false, function(v) FlameConfig.UseRightClick = v end)
-
-CreateHeader(CombatPage, "MAGNET/LOCK")
-CreateToggle(CombatPage, "Mouselock", "Magnet", false, function(v) 
-    MagnetSettings.MasterEnabled = v 
-    if not v then MagnetSettings.Enabled = false end 
-end)
-
-CreateHeader(VisualPage, "ATMOSPHERE PRESETS")
-for name, data in pairs(FogPresets) do
-    local btn = Instance.new("TextButton", VisualPage)
-    btn.Size = UDim2.new(0.95, 0, 0, 30); btn.Text = name; btn.BackgroundColor3 = Color3.fromRGB(20, 20, 20); btn.TextColor3 = data.Color; Instance.new("UICorner", btn)
-    btn.MouseButton1Click:Connect(function()
-        for _, v in ipairs(Lighting:GetChildren()) do if v:IsA("Atmosphere") then v:Destroy() end end
-        local atm = Instance.new("Atmosphere", Lighting); atm.Color = data.Color; atm.Density = data.Density; atm.Haze = 4
-        Lighting.FogStart = 30; Lighting.FogEnd = 200
-    end)
-end
-
-local RestoreBtn = Instance.new("TextButton", VisualPage)
-RestoreBtn.Size = UDim2.new(0.95, 0, 0, 35); RestoreBtn.Text = "Restore Game Fog"; RestoreBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30); RestoreBtn.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", RestoreBtn)
-RestoreBtn.MouseButton1Click:Connect(function()
-    for _, v in ipairs(Lighting:GetChildren()) do if v:IsA("Atmosphere") then v:Destroy() end end
-    if OrigAtmosphere then OrigAtmosphere:Clone().Parent = Lighting end
-    Lighting.FogStart = OrigFogStart; Lighting.FogEnd = OrigFogEnd; Lighting.FogColor = OrigFogColor
-end)
-
-for name, cf in pairs(locations) do
-    local btn = Instance.new("TextButton", TeleportPage)
-    btn.Size = UDim2.new(0.95, 0, 0, 35); btn.Text = name; btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25); btn.TextColor3 = Color3.fromRGB(255, 105, 180); Instance.new("UICorner", btn)
-    btn.MouseButton1Click:Connect(function() if LocalPlayer.Character then LocalPlayer.Character:PivotTo(cf + Vector3.new(0, 0.5, 0)) end end)
-end
-
-CreateHeader(SpeedPage, "MOVEMENT")
-CreateToggle(SpeedPage, "Speed Master", "Speed", false, function(v) FlameConfig.MasterSpeed = v; FlameConfig.SpeedActive = v end)
-CreateSpeedDial(SpeedPage, "Speed Dial", 16, 1000, 100, function(v) FlameConfig.WalkSpeedValue = v end)
-
-CreateHeader(SpeedPage, "UI SETTINGS")
-CreateToggle(SpeedPage, "Hide UI Key", "UI", true, function() end)
-
--- [[ LOGIC ]] --
-
+-- [[ COMBAT UTILS ]] --
 local function isBlacklisted()
     local char = LocalPlayer.Character
     local tool = char and char:FindFirstChildOfClass("Tool")
@@ -396,52 +358,97 @@ end
 local flameTargetPart = nil
 local magTarget = nil
 
-UserInputService.InputBegan:Connect(function(i, p)
-    if p then return end
-    if i.KeyCode == GlobalSettings.HideAllKey then MainFrame.Visible = not MainFrame.Visible
-    elseif i.KeyCode == MagnetSettings.LockKey and MagnetSettings.MasterEnabled then 
-        MagnetSettings.Enabled = not MagnetSettings.Enabled; 
-        magTarget = MagnetSettings.Enabled and getMagnetTarget() or nil
-    elseif i.KeyCode == FlameConfig.WalkSpeedKey and FlameConfig.MasterSpeed then 
-        FlameConfig.SpeedActive = not FlameConfig.SpeedActive
-    elseif i.KeyCode == TriggerSettings.TriggerKey then 
-        if TriggerSettings.Mode == "Toggle" then TriggerSettings.Active = not TriggerSettings.Active else TriggerSettings.Active = true end
-    elseif (FlameConfig.UseRightClick and i.UserInputType == Enum.UserInputType.MouseButton2) or (not FlameConfig.UseRightClick and i.KeyCode == FlameConfig.MouseLockKey) then
-        if FlameConfig.MasterLock then
-            if FlameConfig.ActivationType == "Toggle" then 
-                FlameConfig.LockActive = not FlameConfig.LockActive; 
-                flameTargetPart = FlameConfig.LockActive and getFlameTarget() or nil
-            else 
-                FlameConfig.LockActive = true; 
-                flameTargetPart = getFlameTarget() 
-            end
-        end
-    end
+-- [[ PAGE POPULATION ]] --
+CreateHeader(CombatPage, "TRIGGERBOT")
+CreateToggle(CombatPage, "Triggerbot", "Trigger", false, function(v) TriggerSettings.MasterEnabled = v end)
+CreateModeSelector(CombatPage, "Activation", "Hold", function(m) TriggerSettings.Mode = m end)
+
+CreateHeader(CombatPage, "FLAMELOCK")
+CreateToggle(CombatPage, "Flamelock", "Flame", false, function(v) FlameConfig.MasterLock = v end)
+CreateModeSelector(CombatPage, "Activation", "Hold", function(m) FlameConfig.ActivationType = m end)
+CreateToggle(CombatPage, "Use Right Click", nil, false, function(v) FlameConfig.UseRightClick = v end)
+
+CreateHeader(CombatPage, "MAGNET/LOCK")
+CreateToggle(CombatPage, "Mouselock", "Magnet", false, function(v) MagnetSettings.MasterEnabled = v if not v then MagnetSettings.Enabled = false end end)
+
+CreateHeader(VisualPage, "ATMOSPHERE PRESETS")
+local resetBtn = Instance.new("TextButton", VisualPage)
+resetBtn.Size = UDim2.new(0.95, 0, 0, 30); resetBtn.Text = "Reset Lighting"; resetBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35); resetBtn.TextColor3 = Color3.new(1,1,1); Instance.new("UICorner", resetBtn)
+resetBtn.MouseButton1Click:Connect(function()
+    for _, v in ipairs(Lighting:GetChildren()) do if v:IsA("Atmosphere") then v:Destroy() end end
+    if OrigAtmosphere then OrigAtmosphere:Clone().Parent = Lighting end
+    Lighting.FogStart = OrigFogStart; Lighting.FogEnd = OrigFogEnd; Lighting.FogColor = OrigFogColor
 end)
 
-UserInputService.InputEnded:Connect(function(i)
-    if i.KeyCode == TriggerSettings.TriggerKey and TriggerSettings.Mode == "Hold" then 
-        TriggerSettings.Active = false
-    elseif (FlameConfig.UseRightClick and i.UserInputType == Enum.UserInputType.MouseButton2) or (not FlameConfig.UseRightClick and i.KeyCode == FlameConfig.MouseLockKey) then
-        if FlameConfig.ActivationType == "Hold" then FlameConfig.LockActive = false end
-    end
-end)
+for name, data in pairs(FogPresets) do
+    local btn = Instance.new("TextButton", VisualPage)
+    btn.Size = UDim2.new(0.95, 0, 0, 30); btn.Text = name; btn.BackgroundColor3 = Color3.fromRGB(20, 20, 20); btn.TextColor3 = data.Color; Instance.new("UICorner", btn)
+    btn.MouseButton1Click:Connect(function()
+        for _, v in ipairs(Lighting:GetChildren()) do if v:IsA("Atmosphere") then v:Destroy() end end
+        local atm = Instance.new("Atmosphere", Lighting); atm.Color = data.Color; atm.Density = data.Density; atm.Haze = 4
+        Lighting.FogStart = 30; Lighting.FogEnd = 200
+    end)
+end
 
-RunService.Heartbeat:Connect(function()
-    if FlameConfig.MasterSpeed and FlameConfig.SpeedActive then
-        local char = LocalPlayer.Character; local hum = char and char:FindFirstChildOfClass("Humanoid")
-        if hum and hum.MoveDirection.Magnitude > 0 then 
-            char:TranslateBy(hum.MoveDirection * (FlameConfig.WalkSpeedValue / 100)) 
-        end
-    end
-end)
+CreateHeader(ESPPage, "ESP SETTINGS")
+CreateToggle(ESPPage, "Master ESP", nil, false, function(v) ESPSettings.Enabled = v end)
+CreateToggle(ESPPage, "Boxes", nil, false, function(v) ESPSettings.Box = v end, true, function(c) ESPSettings.BoxColor = c end)
+CreateToggle(ESPPage, "Skeletons", nil, false, function(v) ESPSettings.Skeleton = v end, true, function(c) ESPSettings.SkeletonColor = c end)
+CreateToggle(ESPPage, "Names", nil, false, function(v) ESPSettings.Name = v end, true, function(c) ESPSettings.NameColor = c end)
+CreateToggle(ESPPage, "Health Bars", nil, false, function(v) ESPSettings.Health = v end)
+CreateToggle(ESPPage, "Distance", nil, false, function(v) ESPSettings.Distance = v end)
 
+for name, cf in pairs(locations) do
+    local btn = Instance.new("TextButton", TeleportPage)
+    btn.Size = UDim2.new(0.95, 0, 0, 35); btn.Text = name; btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25); btn.TextColor3 = Color3.fromRGB(255, 105, 180); Instance.new("UICorner", btn)
+    btn.MouseButton1Click:Connect(function() if LocalPlayer.Character then LocalPlayer.Character:PivotTo(cf + Vector3.new(0, 0.5, 0)) end end)
+end
+
+CreateHeader(SpeedPage, "MOVEMENT")
+CreateToggle(SpeedPage, "Speed Master", "Speed", false, function(v) FlameConfig.MasterSpeed = v; FlameConfig.SpeedActive = v end)
+CreateSpeedDial(SpeedPage, "Speed Dial", 16, 1000, 100, function(v) FlameConfig.WalkSpeedValue = v end)
+
+-- [[ DRAWING LOGIC ]] --
+local function CreateDrawing(class, props)
+    local d = Drawing.new(class)
+    for i, v in pairs(props) do d[i] = v end
+    return d
+end
+
+local staticBoneList = {{"Head","UpperTorso"},{"UpperTorso","LowerTorso"},{"UpperTorso","LeftUpperArm"},{"LeftUpperArm","LeftLowerArm"},{"UpperTorso","RightUpperArm"},{"RightUpperArm","RightLowerArm"},{"LowerTorso","LeftUpperLeg"},{"LeftUpperLeg","LeftLowerLeg"},{"LowerTorso","RightUpperLeg"},{"RightUpperLeg","RightLowerLeg"}}
+
+local ESPObjects = {}
+local function AddESP(plr)
+    local objects = {
+        Box = CreateDrawing("Square", {Thickness = 1, Filled = false, Color = ESPSettings.BoxColor, Visible = false}),
+        Name = CreateDrawing("Text", {Size = 13, Center = true, Outline = true, Color = ESPSettings.NameColor, Visible = false}),
+        Health = CreateDrawing("Line", {Thickness = 2, Color = Color3.new(0,1,0), Visible = false}),
+        Bones = {}
+    }
+    for i=1, #staticBoneList do objects.Bones[i] = CreateDrawing("Line", {Thickness = 1, Color = ESPSettings.SkeletonColor, Visible = false}) end
+    ESPObjects[plr] = objects
+end
+
+Players.PlayerAdded:Connect(AddESP); for _, plr in pairs(Players:GetPlayers()) do if plr ~= LocalPlayer then AddESP(plr) end end
+Players.PlayerRemoving:Connect(function(plr) if ESPObjects[plr] then for _, v in pairs(ESPObjects[plr]) do if type(v) == "table" then for _, b in pairs(v) do b:Remove() end else v:Remove() end end ESPObjects[plr] = nil end end)
+
+-- [[ CORE LOOP ]] --
+local lastESPTick = 0
 RunService.RenderStepped:Connect(function()
+    local clock = os.clock()
+    
+    if combatIndicators.Trigger then combatIndicators.Trigger.BackgroundColor3 = (TriggerSettings.MasterEnabled and TriggerSettings.Active) and Color3.new(0,1,0) or Color3.new(1,0,0) end
+    if combatIndicators.Flame then combatIndicators.Flame.BackgroundColor3 = (FlameConfig.MasterLock and FlameConfig.LockActive) and Color3.new(0,1,0) or Color3.new(1,0,0) end
+    if combatIndicators.Magnet then combatIndicators.Magnet.BackgroundColor3 = (MagnetSettings.MasterEnabled and MagnetSettings.Enabled) and Color3.new(0,1,0) or Color3.new(1,0,0) end
+
+    -- Magnet Logic
     if MagnetSettings.Enabled and magTarget and magTarget.Character and magTarget.Character:FindFirstChild(MagnetSettings.TargetPart) then
         local tPos, _ = Camera:WorldToViewportPoint(magTarget.Character[MagnetSettings.TargetPart].Position)
         local delta = (Vector2.new(tPos.X, tPos.Y) - UserInputService:GetMouseLocation()) * MagnetSettings.MagnetStrength
         if mousemoverel then mousemoverel(delta.X, delta.Y) end
     end
+
+    -- Flamelock Logic
     if FlameConfig.MasterLock and FlameConfig.LockActive and flameTargetPart and flameTargetPart.Parent then
         local tPos = flameTargetPart.Position + (flameTargetPart.Velocity * FlameConfig.Prediction)
         local offset = (Camera.CFrame.RightVector * FlameConfig.LeftOffset) + Vector3.new(0, FlameConfig.UpOffset, 0)
@@ -451,19 +458,106 @@ RunService.RenderStepped:Connect(function()
             pcall(function() mousemoverel((fScreen.X - mPos.X) * FlameConfig.Smoothness, (fScreen.Y - mPos.Y) * FlameConfig.Smoothness) end)
         end
     end
-    -- TRIGGERBOT WITH KNIFE PROTECTION
-    if TriggerSettings.MasterEnabled and TriggerSettings.Active then
-        if not isBlacklisted() then
-            local target = Mouse.Target
-            if target and target.Parent then
-                local hum = target.Parent:FindFirstChild("Humanoid") or target.Parent.Parent:FindFirstChild("Humanoid")
-                if hum and hum.Parent.Name ~= LocalPlayer.Name then
-                    if mouse1click then 
-                        mouse1click() 
-                        task.wait(TriggerSettings.ClickDelay) 
+
+    -- Triggerbot Logic
+    if TriggerSettings.MasterEnabled and TriggerSettings.Active and not isBlacklisted() then
+        local target = Mouse.Target
+        if target and target.Parent then
+            local hum = target.Parent:FindFirstChild("Humanoid") or target.Parent.Parent:FindFirstChild("Humanoid")
+            if hum and hum.Parent.Name ~= LocalPlayer.Name then
+                if mouse1click then mouse1click() task.wait(TriggerSettings.ClickDelay) end
+            end
+        end
+    end
+
+    -- ESP Render
+    if ESPSettings.Enabled and clock - lastESPTick > 0.016 then
+        lastESPTick = clock
+        for plr, obj in pairs(ESPObjects) do
+            local char = plr.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local isShown = false
+
+            if hrp then
+                local dist = (hrp.Position - Camera.CFrame.Position).Magnitude
+                if dist < ESPSettings.MaxDistance then
+                    local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+                    if onScreen then
+                        isShown = true
+                        local size = (Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0)).Y - Camera:WorldToViewportPoint(hrp.Position + Vector3.new(0, 2.6, 0)).Y)
+                        local xSize = size / 2
+
+                        obj.Name.Visible = ESPSettings.Name; obj.Name.Color = ESPSettings.NameColor
+                        obj.Name.Position = Vector2.new(pos.X, pos.Y - size/2 - 15)
+                        obj.Name.Text = (ESPSettings.Name and plr.Name or "") .. (ESPSettings.Distance and " ["..math.floor(dist).."m]" or "")
+
+                        obj.Box.Visible = ESPSettings.Box; obj.Box.Color = ESPSettings.BoxColor
+                        obj.Box.Size = Vector2.new(xSize, size)
+                        obj.Box.Position = Vector2.new(pos.X - xSize/2, pos.Y - size/2)
+
+                        if ESPSettings.Health then
+                            local hum = char:FindFirstChild("Humanoid")
+                            if hum then
+                                obj.Health.Visible = true
+                                obj.Health.From = Vector2.new(pos.X - xSize/2 - 5, pos.Y + size/2)
+                                obj.Health.To = Vector2.new(pos.X - xSize/2 - 5, pos.Y + size/2 - (size * (hum.Health/hum.MaxHealth)))
+                            end
+                        else obj.Health.Visible = false end
+
+                        if ESPSettings.Skeleton and dist < 1200 then
+                            for i, b in pairs(staticBoneList) do
+                                local b1, b2 = char:FindFirstChild(b[1]), char:FindFirstChild(b[2])
+                                if b1 and b2 then
+                                    local p1 = Camera:WorldToViewportPoint(b1.Position); local p2 = Camera:WorldToViewportPoint(b2.Position)
+                                    obj.Bones[i].Visible = true; obj.Bones[i].Color = ESPSettings.SkeletonColor
+                                    obj.Bones[i].From = Vector2.new(p1.X, p1.Y); obj.Bones[i].To = Vector2.new(p2.X, p2.Y)
+                                else obj.Bones[i].Visible = false end
+                            end
+                        else for _, b in pairs(obj.Bones) do b.Visible = false end end
                     end
                 end
             end
+            if not isShown then
+                obj.Box.Visible = false; obj.Name.Visible = false; obj.Health.Visible = false
+                for _, b in pairs(obj.Bones) do b.Visible = false end
+            end
         end
+    elseif not ESPSettings.Enabled then
+         for _, obj in pairs(ESPObjects) do
+            obj.Box.Visible = false; obj.Name.Visible = false; obj.Health.Visible = false
+            for _, b in pairs(obj.Bones) do b.Visible = false end
+        end
+    end
+end)
+
+-- Input Handling
+UserInputService.InputBegan:Connect(function(i, p)
+    if p then return end
+    if i.KeyCode == GlobalSettings.HideAllKey then MainFrame.Visible = not MainFrame.Visible
+    elseif i.KeyCode == MagnetSettings.LockKey and MagnetSettings.MasterEnabled then 
+        MagnetSettings.Enabled = not MagnetSettings.Enabled; magTarget = MagnetSettings.Enabled and getMagnetTarget() or nil
+    elseif i.KeyCode == FlameConfig.WalkSpeedKey and FlameConfig.MasterSpeed then 
+        FlameConfig.SpeedActive = not FlameConfig.SpeedActive
+    elseif i.KeyCode == TriggerSettings.TriggerKey then 
+        if TriggerSettings.Mode == "Toggle" then TriggerSettings.Active = not TriggerSettings.Active else TriggerSettings.Active = true end
+    elseif (FlameConfig.UseRightClick and i.UserInputType == Enum.UserInputType.MouseButton2) or (not FlameConfig.UseRightClick and i.KeyCode == FlameConfig.MouseLockKey) then
+        if FlameConfig.MasterLock then
+            if FlameConfig.ActivationType == "Toggle" then FlameConfig.LockActive = not FlameConfig.LockActive; flameTargetPart = FlameConfig.LockActive and getFlameTarget() or nil
+            else FlameConfig.LockActive = true; flameTargetPart = getFlameTarget() end
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(i)
+    if i.KeyCode == TriggerSettings.TriggerKey and TriggerSettings.Mode == "Hold" then TriggerSettings.Active = false
+    elseif (FlameConfig.UseRightClick and i.UserInputType == Enum.UserInputType.MouseButton2) or (not FlameConfig.UseRightClick and i.KeyCode == FlameConfig.MouseLockKey) then
+        if FlameConfig.ActivationType == "Hold" then FlameConfig.LockActive = false end
+    end
+end)
+
+RunService.Heartbeat:Connect(function()
+    if FlameConfig.MasterSpeed and FlameConfig.SpeedActive then
+        local char = LocalPlayer.Character; local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum and hum.MoveDirection.Magnitude > 0 then char:TranslateBy(hum.MoveDirection * (FlameConfig.WalkSpeedValue / 100)) end
     end
 end)
