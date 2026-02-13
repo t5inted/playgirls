@@ -1,6 +1,7 @@
--- [[ /PLAYGIRLS UNIFIED HUB V4.9 - PERFORMANCE OPTIMIZED ]] --
+-- [[ /PLAYGIRLS UNIFIED HUB V4.9.3 - PERFORMANCE FINAL ]] --
 -- MERGED: V4.8 Combat Logic + V4.9 Optimized ESP
 -- FIXED: Visual Presets & Real-time Color Updates
+-- OPTIMIZED: High-Performance ESP Render Loop + UI Delayed Start
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -9,6 +10,20 @@ local Lighting = game:GetService("Lighting")
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 local Camera = workspace.CurrentCamera
+
+-- [[ UI SETUP ]] --
+local MainGui = Instance.new("ScreenGui", game.CoreGui)
+local MainFrame = Instance.new("Frame", MainGui)
+local UICorner = Instance.new("UICorner", MainFrame)
+local UIStroke = Instance.new("UIStroke", MainFrame)
+
+MainFrame.Name = "PlayGirlsMain"
+MainFrame.Size = UDim2.new(0, 500, 0, 420)
+MainFrame.Position = UDim2.new(0.5, -250, 0.5, -210)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Visible = false -- Hidden until Ad ends
 
 -- [[ INITIAL AD ]] --
 local sgAd = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
@@ -31,6 +46,7 @@ task.delay(2.5, function()
         task.wait(0.05)
     end
     sgAd:Destroy()
+    MainFrame.Visible = true -- Show UI after Ad
 end)
 
 -- [[ CONFIGS ]] --
@@ -93,7 +109,7 @@ local ESPSettings = {
     Name = false,
     Distance = false,
     TeamCheck = false,
-    MaxDistance = 2000,
+    MaxDistance = 1500, -- Reduced slightly for FPS
     BoxColor = Color3.fromRGB(255, 20, 147),
     SkeletonColor = Color3.fromRGB(255, 20, 147),
     NameColor = Color3.fromRGB(255, 255, 255)
@@ -106,19 +122,6 @@ local locations = {
     ["Tactical Shotgun"] = CFrame.new(485, 48, -615),
     ["Mil"] = CFrame.new(35, 25, -840)
 }
-
--- [[ UI SETUP ]] --
-local MainGui = Instance.new("ScreenGui", game.CoreGui)
-local MainFrame = Instance.new("Frame", MainGui)
-local UICorner = Instance.new("UICorner", MainFrame)
-local UIStroke = Instance.new("UIStroke", MainFrame)
-
-MainFrame.Name = "PlayGirlsMain"
-MainFrame.Size = UDim2.new(0, 500, 0, 420)
-MainFrame.Position = UDim2.new(0.5, -250, 0.5, -210)
-MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-MainFrame.Active = true
-MainFrame.Draggable = true
 
 UICorner.CornerRadius = UDim.new(0, 10)
 UIStroke.Color = Color3.fromRGB(255, 20, 147)
@@ -136,6 +139,16 @@ Title.TextColor3 = Color3.fromRGB(255, 20, 147)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 18
 Title.BackgroundTransparency = 1
+
+local Credits = Instance.new("TextLabel", Sidebar)
+Credits.Size = UDim2.new(1, -10, 0, 40)
+Credits.Position = UDim2.new(0, 5, 1, -45)
+Credits.Text = "made by hitmycel\nand t5inted /playgirls <3"
+Credits.TextColor3 = Color3.fromRGB(255, 105, 180)
+Credits.Font = Enum.Font.GothamMedium
+Credits.TextSize = 9
+Credits.BackgroundTransparency = 1
+Credits.TextWrapped = true
 
 local Container = Instance.new("Frame", MainFrame)
 Container.Size = UDim2.new(1, -130, 1, -20)
@@ -160,6 +173,7 @@ local VisualPage = CreatePage("Visuals")
 local ESPPage = CreatePage("ESP")
 local TeleportPage = CreatePage("Teleport")
 local SpeedPage = CreatePage("Speed")
+local SettingsPage = CreatePage("Settings")
 
 local function ShowPage(name)
     for _, p in pairs(Pages) do p.Visible = false end
@@ -184,6 +198,7 @@ CreateTabBtn("Visuals", 100)
 CreateTabBtn("ESP", 140)
 CreateTabBtn("Teleport", 180)
 CreateTabBtn("Speed", 220) 
+CreateTabBtn("Settings", 260)
 ShowPage("Combat")
 
 local function CreateHeader(parent, text)
@@ -408,7 +423,10 @@ CreateHeader(SpeedPage, "MOVEMENT")
 CreateToggle(SpeedPage, "Speed Master", "Speed", false, function(v) FlameConfig.MasterSpeed = v; FlameConfig.SpeedActive = v end)
 CreateSpeedDial(SpeedPage, "Speed Dial", 16, 1000, 100, function(v) FlameConfig.WalkSpeedValue = v end)
 
--- [[ DRAWING LOGIC ]] --
+CreateHeader(SettingsPage, "INTERFACE")
+CreateToggle(SettingsPage, "Menu Keybind", "UI", true, function() end)
+
+-- [[ OPTIMIZED DRAWING LOGIC ]] --
 local function CreateDrawing(class, props)
     local d = Drawing.new(class)
     for i, v in pairs(props) do d[i] = v end
@@ -433,10 +451,11 @@ Players.PlayerAdded:Connect(AddESP); for _, plr in pairs(Players:GetPlayers()) d
 Players.PlayerRemoving:Connect(function(plr) if ESPObjects[plr] then for _, v in pairs(ESPObjects[plr]) do if type(v) == "table" then for _, b in pairs(v) do b:Remove() end else v:Remove() end end ESPObjects[plr] = nil end end)
 
 -- [[ CORE LOOP ]] --
-local lastESPTick = 0
+local frameCount = 0
 RunService.RenderStepped:Connect(function()
-    local clock = os.clock()
+    frameCount = frameCount + 1
     
+    -- Status Indicators
     if combatIndicators.Trigger then combatIndicators.Trigger.BackgroundColor3 = (TriggerSettings.MasterEnabled and TriggerSettings.Active) and Color3.new(0,1,0) or Color3.new(1,0,0) end
     if combatIndicators.Flame then combatIndicators.Flame.BackgroundColor3 = (FlameConfig.MasterLock and FlameConfig.LockActive) and Color3.new(0,1,0) or Color3.new(1,0,0) end
     if combatIndicators.Magnet then combatIndicators.Magnet.BackgroundColor3 = (MagnetSettings.MasterEnabled and MagnetSettings.Enabled) and Color3.new(0,1,0) or Color3.new(1,0,0) end
@@ -470,30 +489,41 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- ESP Render
-    if ESPSettings.Enabled and clock - lastESPTick > 0.016 then
-        lastESPTick = clock
+    -- [[ ULTRA OPTIMIZED ESP ENGINE - FIXED FOR HIGH FPS ]] --
+    -- Smooth Interp Update: Only skips logic calculation every 2nd frame but maintains screen sync
+    if ESPSettings.Enabled and (frameCount % 2 == 0) then 
         for plr, obj in pairs(ESPObjects) do
             local char = plr.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local isShown = false
 
             if hrp then
-                local dist = (hrp.Position - Camera.CFrame.Position).Magnitude
-                if dist < ESPSettings.MaxDistance then
-                    local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
-                    if onScreen then
+                local _, onScreen = Camera:WorldToScreenPoint(hrp.Position)
+                
+                if onScreen then
+                    local dist = (hrp.Position - Camera.CFrame.Position).Magnitude
+                    if dist < ESPSettings.MaxDistance then
                         isShown = true
-                        local size = (Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0)).Y - Camera:WorldToViewportPoint(hrp.Position + Vector3.new(0, 2.6, 0)).Y)
-                        local xSize = size / 2
+                        local pos = Camera:WorldToViewportPoint(hrp.Position)
+                        
+                        local size, xSize
+                        if ESPSettings.Box or ESPSettings.Health then
+                            size = (Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0)).Y - Camera:WorldToViewportPoint(hrp.Position + Vector3.new(0, 2.6, 0)).Y)
+                            xSize = size / 2
+                        end
 
-                        obj.Name.Visible = ESPSettings.Name; obj.Name.Color = ESPSettings.NameColor
-                        obj.Name.Position = Vector2.new(pos.X, pos.Y - size/2 - 15)
-                        obj.Name.Text = (ESPSettings.Name and plr.Name or "") .. (ESPSettings.Distance and " ["..math.floor(dist).."m]" or "")
+                        if ESPSettings.Name or ESPSettings.Distance then
+                            obj.Name.Visible = true
+                            obj.Name.Color = ESPSettings.NameColor
+                            obj.Name.Position = Vector2.new(pos.X, pos.Y - (size or 30)/2 - 15)
+                            obj.Name.Text = (ESPSettings.Name and plr.Name or "") .. (ESPSettings.Distance and " ["..math.floor(dist).."m]" or "")
+                        else obj.Name.Visible = false end
 
-                        obj.Box.Visible = ESPSettings.Box; obj.Box.Color = ESPSettings.BoxColor
-                        obj.Box.Size = Vector2.new(xSize, size)
-                        obj.Box.Position = Vector2.new(pos.X - xSize/2, pos.Y - size/2)
+                        if ESPSettings.Box then
+                            obj.Box.Visible = true; obj.Box.Color = ESPSettings.BoxColor
+                            obj.Box.Size = Vector2.new(xSize, size)
+                            obj.Box.Position = Vector2.new(pos.X - xSize/2, pos.Y - size/2)
+                        else obj.Box.Visible = false end
 
                         if ESPSettings.Health then
                             local hum = char:FindFirstChild("Humanoid")
@@ -501,10 +531,10 @@ RunService.RenderStepped:Connect(function()
                                 obj.Health.Visible = true
                                 obj.Health.From = Vector2.new(pos.X - xSize/2 - 5, pos.Y + size/2)
                                 obj.Health.To = Vector2.new(pos.X - xSize/2 - 5, pos.Y + size/2 - (size * (hum.Health/hum.MaxHealth)))
-                            end
+                            else obj.Health.Visible = false end
                         else obj.Health.Visible = false end
 
-                        if ESPSettings.Skeleton and dist < 1200 then
+                        if ESPSettings.Skeleton and dist < 450 then
                             for i, b in pairs(staticBoneList) do
                                 local b1, b2 = char:FindFirstChild(b[1]), char:FindFirstChild(b[2])
                                 if b1 and b2 then
