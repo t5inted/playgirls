@@ -1,7 +1,6 @@
--- [[ /PLAYGIRLS UNIFIED HUB V4.9.4 - HIGH PERFORMANCE ESP ]] --
--- MERGED: V4.8 Combat Logic + V4.9.4 Optimized Rendering
--- FIXED: FPS Drops (Now uses frame-skipping and distance culling)
--- FIXED: ESP freezing on screen when disabled
+-- [[ /PLAYGIRLS UNIFIED HUB V4.9.6 - FINAL VERSION ]] --
+-- FIXED: Headless persistence + Right Click Toggle + Z-Key lockout
+-- UPDATED: Speed Dial 16-1000 + MOMMYMODEV1 UI
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -53,6 +52,13 @@ end)
 local GlobalSettings = {
     Visible = true,
     HideAllKey = Enum.KeyCode.X 
+}
+
+local AvatarSettings = {
+    SparkleColor = Color3.fromRGB(255, 20, 147),
+    SparkleSize = 1,
+    HeadlessActive = false,
+    KorbloxActive = false
 }
 
 local TeleportSettings = {
@@ -114,7 +120,7 @@ local ESPSettings = {
     Name = false,
     Distance = false,
     TeamCheck = false,
-    MaxDistance = 800, -- Reduced for performance
+    MaxDistance = 800,
     BoxColor = Color3.fromRGB(255, 20, 147),
     SkeletonColor = Color3.fromRGB(255, 20, 147),
     NameColor = Color3.fromRGB(255, 255, 255)
@@ -138,12 +144,21 @@ Sidebar.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
 Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 10)
 
 local Title = Instance.new("TextLabel", Sidebar)
-Title.Size = UDim2.new(1, 0, 0, 50)
+Title.Size = UDim2.new(1, 0, 0, 40)
 Title.Text = "/PLAYGIRLS"
 Title.TextColor3 = Color3.fromRGB(255, 20, 147)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 18
 Title.BackgroundTransparency = 1
+
+local SubTitle = Instance.new("TextLabel", Sidebar)
+SubTitle.Size = UDim2.new(1, 0, 0, 20)
+SubTitle.Position = UDim2.new(0, 0, 0, 35)
+SubTitle.Text = "MOMMYMODEV1"
+SubTitle.TextColor3 = Color3.fromRGB(255, 105, 180)
+SubTitle.Font = Enum.Font.GothamBold
+SubTitle.TextSize = 10
+SubTitle.BackgroundTransparency = 1
 
 local Credits = Instance.new("TextLabel", Sidebar)
 Credits.Size = UDim2.new(1, -10, 0, 40)
@@ -178,6 +193,7 @@ local VisualPage = CreatePage("Visuals")
 local ESPPage = CreatePage("ESP")
 local TeleportPage = CreatePage("Teleport")
 local SpeedPage = CreatePage("Speed")
+local AvatarPage = CreatePage("Avatar")
 local SettingsPage = CreatePage("Settings")
 
 local function ShowPage(name)
@@ -198,12 +214,13 @@ local function CreateTabBtn(name, offset)
     btn.MouseButton1Click:Connect(function() ShowPage(name) end)
 end
 
-CreateTabBtn("Combat", 60)
-CreateTabBtn("Visuals", 100)
-CreateTabBtn("ESP", 140)
-CreateTabBtn("Teleport", 180)
-CreateTabBtn("Speed", 220) 
-CreateTabBtn("Settings", 260)
+CreateTabBtn("Combat", 65)
+CreateTabBtn("Visuals", 105)
+CreateTabBtn("ESP", 145)
+CreateTabBtn("Teleport", 185)
+CreateTabBtn("Speed", 225) 
+CreateTabBtn("Avatar", 265)
+CreateTabBtn("Settings", 305)
 ShowPage("Combat")
 
 local function CreateHeader(parent, text)
@@ -216,7 +233,21 @@ local function CreateHeader(parent, text)
     l.TextSize = 13
 end
 
-local combatIndicators = {}
+local function CreateButton(parent, text, callback)
+    local btn = Instance.new("TextButton", parent)
+    btn.Size = UDim2.new(0.95, 0, 0, 35)
+    btn.Text = text
+    btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 12
+    Instance.new("UICorner", btn)
+    btn.MouseButton1Click:Connect(callback)
+    return btn
+end
+
+local statusBars = {}
+
 local function CreateToggle(parent, text, bindType, default, callback, hasColor, colorCallback)
     local frame = Instance.new("Frame", parent)
     frame.Size = UDim2.new(0.95, 0, 0, 35)
@@ -225,13 +256,17 @@ local function CreateToggle(parent, text, bindType, default, callback, hasColor,
     local status = Instance.new("Frame", frame)
     status.Size = UDim2.new(0, 6, 0.6, 0)
     status.Position = UDim2.new(0, 2, 0.2, 0)
-    status.BackgroundColor3 = default and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+    status.BackgroundColor3 = Color3.fromRGB(255, 0, 0) 
     Instance.new("UICorner", status)
     
-    if text == "Triggerbot" then combatIndicators.Trigger = status
-    elseif text == "Flamelock" then combatIndicators.Flame = status
-    elseif text == "Mouselock" then combatIndicators.Magnet = status end
-
+    if text == "Triggerbot" then statusBars.Trigger = status
+    elseif text == "Flamelock" then statusBars.Flame = status
+    elseif text == "Mouselock" then statusBars.Magnet = status
+    elseif text == "Speed Master" then statusBars.Speed = status
+    else
+        status.BackgroundColor3 = default and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+    end
+    
     local btn = Instance.new("TextButton", frame)
     btn.Size = UDim2.new(1, -12, 1, 0)
     btn.Position = UDim2.new(0, 12, 0, 0)
@@ -247,7 +282,9 @@ local function CreateToggle(parent, text, bindType, default, callback, hasColor,
         state = not state
         btn.Text = text .. (state and ": ON" or ": OFF")
         btn.TextColor3 = state and Color3.fromRGB(255, 20, 147) or Color3.new(1,1,1)
-        status.BackgroundColor3 = state and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+        if not (text == "Triggerbot" or text == "Flamelock" or text == "Mouselock" or text == "Speed Master") then
+            status.BackgroundColor3 = state and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+        end
         callback(state)
     end)
 
@@ -259,7 +296,7 @@ local function CreateToggle(parent, text, bindType, default, callback, hasColor,
         cp.Text = ""
         Instance.new("UICorner", cp)
         
-        local palette = {Color3.fromRGB(255, 20, 147), Color3.new(1,0,0), Color3.new(0,1,0), Color3.new(0,0,1), Color3.new(1,1,1), Color3.new(1,1,0)}
+        local palette = {Color3.fromRGB(255, 20, 147), Color3.new(1,0,0), Color3.new(0,1,0), Color3.new(0,0,1), Color3.new(1,1,1), Color3.new(1,1,0), Color3.new(1,0,1)}
         local cIdx = 1
         cp.MouseButton1Click:Connect(function()
             cIdx = (cIdx % #palette) + 1
@@ -320,7 +357,7 @@ local function CreateModeSelector(parent, label, default, callback)
     btn.MouseButton1Click:Connect(function() current = (current == "Hold" and "Toggle" or "Hold"); updateText(current); callback(current) end)
 end
 
-local function CreateSpeedDial(parent, text, min, max, default, callback)
+local function CreateSlider(parent, text, min, max, default, callback)
     local sliderFrame = Instance.new("Frame", parent)
     sliderFrame.Size = UDim2.new(0.95, 0, 0, 55)
     sliderFrame.BackgroundTransparency = 1
@@ -338,48 +375,39 @@ local function CreateSpeedDial(parent, text, min, max, default, callback)
     UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
 end
 
--- [[ COMBAT UTILS ]] --
-local function isBlacklisted()
-    local char = LocalPlayer.Character
-    local tool = char and char:FindFirstChildOfClass("Tool")
-    if tool then
-        local tName = tool.Name:lower()
-        for _, name in pairs(TriggerSettings.Blacklist) do
-            if string.find(tName, name:lower()) then return true end
+-- [[ AVATAR UTILS ]] --
+local function WearItem(id)
+    pcall(function()
+        local head = LocalPlayer.Character:FindFirstChild("Head")
+        if head then
+            for _, v in pairs(head:GetChildren()) do
+                if v:IsA("SurfaceAppearance") or v:IsA("FaceControls") or v:IsA("Decal") then v:Destroy() end
+            end
+            local face = Instance.new("Decal", head)
+            face.Name = "face"
+            face.Texture = "rbxassetid://" .. id
         end
-    end
-    return false
+    end)
 end
 
-local function getMagnetTarget()
-    local closest, shortest = nil, math.huge; local mPos = UserInputService:GetMouseLocation()
-    for _, v in pairs(Players:GetPlayers()) do
-        if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild(MagnetSettings.TargetPart) then
-            local pos, _ = Camera:WorldToViewportPoint(v.Character[MagnetSettings.TargetPart].Position)
-            local dist = (Vector2.new(pos.X, pos.Y) - mPos).Magnitude
-            if dist < shortest then closest = v; shortest = dist end
-        end
-    end
-    return closest
-end
-
-local function getFlameTarget()
-    local closest, shortest = nil, math.huge; local mPos = UserInputService:GetMouseLocation()
-    for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild(FlameConfig.HitPart) then
-            local part = plr.Character[FlameConfig.HitPart]
-            local sPos, onScreen = Camera:WorldToViewportPoint(part.Position)
-            if onScreen then
-                local dist = (Vector2.new(mPos.X, mPos.Y) - Vector2.new(sPos.X, sPos.Y)).Magnitude
-                if dist < shortest then closest = part; shortest = dist end
+local function ApplyHeadless()
+    if AvatarSettings.HeadlessActive and LocalPlayer.Character then
+        local head = LocalPlayer.Character:FindFirstChild("Head")
+        if head then
+            head.Transparency = 1
+            for _, v in pairs(head:GetChildren()) do
+                if v:IsA("Decal") or v:IsA("BasePart") or v:IsA("Attachment") then
+                    pcall(function() v.Transparency = 1 end)
+                end
             end
         end
     end
-    return closest
 end
 
-local flameTargetPart = nil
-local magTarget = nil
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    ApplyHeadless()
+end)
 
 -- [[ PAGE POPULATION ]] --
 CreateHeader(CombatPage, "TRIGGERBOT")
@@ -433,10 +461,108 @@ end
 
 CreateHeader(SpeedPage, "MOVEMENT")
 CreateToggle(SpeedPage, "Speed Master", "Speed", false, function(v) FlameConfig.MasterSpeed = v; FlameConfig.SpeedActive = v end)
-CreateSpeedDial(SpeedPage, "Speed Dial", 16, 1000, 100, function(v) FlameConfig.WalkSpeedValue = v end)
+CreateSlider(SpeedPage, "Speed Dial", 16, 1000, 100, function(v) FlameConfig.WalkSpeedValue = v end)
+
+CreateHeader(AvatarPage, "AVATAR STUFF")
+CreateButton(AvatarPage, "Super Super Happy Face", function() WearItem(494290547) end)
+CreateButton(AvatarPage, "Playful Vampire", function() WearItem(2409281591) end)
+
+CreateToggle(AvatarPage, "Headless", nil, false, function(v) 
+    AvatarSettings.HeadlessActive = v 
+    if v then ApplyHeadless() else
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head") then
+            LocalPlayer.Character.Head.Transparency = 0
+            for _, v in pairs(LocalPlayer.Character.Head:GetChildren()) do
+                if v:IsA("Decal") then v.Transparency = 0 end
+            end
+        end
+    end
+end)
+
+CreateToggle(AvatarPage, "Korblox Toggle", nil, false, function(v) 
+    AvatarSettings.KorbloxActive = v
+    local char = LocalPlayer.Character
+    if not char then return end
+    if v then
+        for _, p in pairs({"RightLowerLeg", "RightUpperLeg", "RightFoot"}) do
+            if char:FindFirstChild(p) then char[p].Transparency = 1 end
+        end
+        local leg = game:GetObjects("rbxassetid://139666332")[1]
+        leg.Name = "PG_Korblox"
+        leg.Parent = char
+    else
+        if char:FindFirstChild("PG_Korblox") then char.PG_Korblox:Destroy() end
+        for _, p in pairs({"RightLowerLeg", "RightUpperLeg", "RightFoot"}) do
+            if char:FindFirstChild(p) then char[p].Transparency = 0 end
+        end
+    end
+end)
+
+CreateToggle(AvatarPage, "Toggle Sparkles", nil, false, function(v)
+    local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if v then
+        local s = Instance.new("Sparkles", hrp)
+        s.Name = "PG_Sparkle"
+        s.SparkleColor = AvatarSettings.SparkleColor
+        s.Enabled = true
+    else
+        if hrp:FindFirstChild("PG_Sparkle") then hrp.PG_Sparkle:Destroy() end
+    end
+end, true, function(c)
+    AvatarSettings.SparkleColor = c
+    local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if hrp and hrp:FindFirstChild("PG_Sparkle") then hrp.PG_Sparkle.SparkleColor = c end
+end)
+
+CreateSlider(AvatarPage, "Sparkle Size", 1, 20, 1, function(v)
+    AvatarSettings.SparkleSize = v
+end)
 
 CreateHeader(SettingsPage, "INTERFACE")
 CreateToggle(SettingsPage, "Menu Keybind", "UI", true, function() end)
+
+-- [[ COMBAT UTILS ]] --
+local function isBlacklisted()
+    local char = LocalPlayer.Character
+    local tool = char and char:FindFirstChildOfClass("Tool")
+    if tool then
+        local tName = tool.Name:lower()
+        for _, name in pairs(TriggerSettings.Blacklist) do
+            if string.find(tName, name:lower()) then return true end
+        end
+    end
+    return false
+end
+
+local function getMagnetTarget()
+    local closest, shortest = nil, math.huge; local mPos = UserInputService:GetMouseLocation()
+    for _, v in pairs(Players:GetPlayers()) do
+        if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild(MagnetSettings.TargetPart) then
+            local pos, _ = Camera:WorldToViewportPoint(v.Character[MagnetSettings.TargetPart].Position)
+            local dist = (Vector2.new(pos.X, pos.Y) - mPos).Magnitude
+            if dist < shortest then closest = v; shortest = dist end
+        end
+    end
+    return closest
+end
+
+local function getFlameTarget()
+    local closest, shortest = nil, math.huge; local mPos = UserInputService:GetMouseLocation()
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild(FlameConfig.HitPart) then
+            local part = plr.Character[FlameConfig.HitPart]
+            local sPos, onScreen = Camera:WorldToViewportPoint(part.Position)
+            if onScreen then
+                local dist = (Vector2.new(mPos.X, mPos.Y) - Vector2.new(sPos.X, sPos.Y)).Magnitude
+                if dist < shortest then closest = part; shortest = dist end
+            end
+        end
+    end
+    return closest
+end
+
+local flameTargetPart = nil
+local magTarget = nil
 
 -- [[ HIGH PERFORMANCE ESP ENGINE ]] --
 local function CreateDrawing(class, props)
@@ -467,19 +593,22 @@ local frameCount = 0
 RunService.RenderStepped:Connect(function()
     frameCount = frameCount + 1
     
-    -- Status Indicators
-    if combatIndicators.Trigger then combatIndicators.Trigger.BackgroundColor3 = (TriggerSettings.MasterEnabled and TriggerSettings.Active) and Color3.new(0,1,0) or Color3.new(1,0,0) end
-    if combatIndicators.Flame then combatIndicators.Flame.BackgroundColor3 = (FlameConfig.MasterLock and FlameConfig.LockActive) and Color3.new(0,1,0) or Color3.new(1,0,0) end
-    if combatIndicators.Magnet then combatIndicators.Magnet.BackgroundColor3 = (MagnetSettings.MasterEnabled and MagnetSettings.Enabled) and Color3.new(0,1,0) or Color3.new(1,0,0) end
+    if AvatarSettings.HeadlessActive then ApplyHeadless() end
 
-    -- Magnet Logic
-    if MagnetSettings.Enabled and magTarget and magTarget.Character and magTarget.Character:FindFirstChild(MagnetSettings.TargetPart) then
-        local tPos, _ = Camera:WorldToViewportPoint(magTarget.Character[MagnetSettings.TargetPart].Position)
-        local delta = (Vector2.new(tPos.X, tPos.Y) - UserInputService:GetMouseLocation()) * MagnetSettings.MagnetStrength
-        if mousemoverel then mousemoverel(delta.X, delta.Y) end
+    if statusBars.Trigger then statusBars.Trigger.BackgroundColor3 = (TriggerSettings.MasterEnabled and TriggerSettings.Active) and Color3.new(0, 1, 0) or Color3.new(1, 0, 0) end
+    if statusBars.Flame then statusBars.Flame.BackgroundColor3 = (FlameConfig.MasterLock and FlameConfig.LockActive) and Color3.new(0, 1, 0) or Color3.new(1, 0, 0) end
+    if statusBars.Magnet then statusBars.Magnet.BackgroundColor3 = (MagnetSettings.MasterEnabled and MagnetSettings.Enabled) and Color3.new(0, 1, 0) or Color3.new(1, 0, 0) end
+    if statusBars.Speed then statusBars.Speed.BackgroundColor3 = (FlameConfig.MasterSpeed and FlameConfig.SpeedActive) and Color3.new(0, 1, 0) or Color3.new(1, 0, 0) end
+
+    if FlameConfig.MasterSpeed and FlameConfig.SpeedActive then
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChild("Humanoid")
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hum and hrp and hum.MoveDirection.Magnitude > 0 then
+            hrp.CFrame = hrp.CFrame + (hum.MoveDirection * (FlameConfig.WalkSpeedValue / 100))
+        end
     end
 
-    -- Flamelock Logic
     if FlameConfig.MasterLock and FlameConfig.LockActive and flameTargetPart and flameTargetPart.Parent then
         local tPos = flameTargetPart.Position + (flameTargetPart.Velocity * FlameConfig.Prediction)
         local offset = (Camera.CFrame.RightVector * FlameConfig.LeftOffset) + Vector3.new(0, FlameConfig.UpOffset, 0)
@@ -490,7 +619,12 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- Triggerbot Logic
+    if MagnetSettings.Enabled and magTarget and magTarget.Character and magTarget.Character:FindFirstChild(MagnetSettings.TargetPart) then
+        local tPos, _ = Camera:WorldToViewportPoint(magTarget.Character[MagnetSettings.TargetPart].Position)
+        local delta = (Vector2.new(tPos.X, tPos.Y) - UserInputService:GetMouseLocation()) * MagnetSettings.MagnetStrength
+        if mousemoverel then mousemoverel(delta.X, delta.Y) end
+    end
+
     if TriggerSettings.MasterEnabled and TriggerSettings.Active and not isBlacklisted() then
         local target = Mouse.Target
         if target and target.Parent then
@@ -501,19 +635,14 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- [[ OPTIMIZED ESP ENGINE ]] --
     if ESPSettings.Enabled then
-        -- Only update ESP every 2nd frame (cuts CPU load in half)
         if (frameCount % 2 == 0) then 
             for plr, obj in pairs(ESPObjects) do
                 local char = plr.Character; local hrp = char and char:FindFirstChild("HumanoidRootPart")
                 local isShown = false
-                
                 if hrp then
                     local hrpPos = hrp.Position
                     local dist = (hrpPos - Camera.CFrame.Position).Magnitude
-                    
-                    -- Culling: Don't process if too far
                     if dist < ESPSettings.MaxDistance then
                         local pos, onScreen = Camera:WorldToViewportPoint(hrpPos)
                         if onScreen then
@@ -521,20 +650,17 @@ RunService.RenderStepped:Connect(function()
                             local size = (Camera:WorldToViewportPoint(hrpPos - Vector3.new(0, 3, 0)).Y - Camera:WorldToViewportPoint(hrpPos + Vector3.new(0, 2.6, 0)).Y)
                             local xSize = size / 2
 
-                            -- Name/Dist Drawing
                             if ESPSettings.Name or ESPSettings.Distance then
                                 obj.Name.Visible = true; obj.Name.Position = Vector2.new(pos.X, pos.Y - size/2 - 15)
                                 obj.Name.Text = (ESPSettings.Name and plr.Name or "") .. (ESPSettings.Distance and " ["..math.floor(dist).."m]" or "")
                                 obj.Name.Color = ESPSettings.NameColor
                             else obj.Name.Visible = false end
 
-                            -- Box Drawing
                             if ESPSettings.Box then
                                 obj.Box.Visible = true; obj.Box.Size = Vector2.new(xSize, size); obj.Box.Position = Vector2.new(pos.X - xSize/2, pos.Y - size/2)
                                 obj.Box.Color = ESPSettings.BoxColor
                             else obj.Box.Visible = false end
 
-                            -- Health Bar Logic
                             if ESPSettings.Health then
                                 local hum = char:FindFirstChild("Humanoid")
                                 if hum then
@@ -545,7 +671,6 @@ RunService.RenderStepped:Connect(function()
                                 end
                             else obj.Health.Visible = false end
 
-                            -- Skeleton Logic (Only draw if close for performance)
                             if ESPSettings.Skeleton and dist < 300 then
                                 for i, b in pairs(staticBoneList) do
                                     local b1, b2 = char:FindFirstChild(b[1]), char:FindFirstChild(b[2])
@@ -559,8 +684,6 @@ RunService.RenderStepped:Connect(function()
                         end
                     end
                 end
-                
-                -- Cleanup for off-screen/far players
                 if not isShown then
                     obj.Box.Visible = false; obj.Name.Visible = false; obj.Health.Visible = false
                     for _, b in pairs(obj.Bones) do b.Visible = false end
@@ -568,7 +691,6 @@ RunService.RenderStepped:Connect(function()
             end
         end
     else
-        -- Master ESP Killswitch
         for _, obj in pairs(ESPObjects) do
             obj.Box.Visible = false; obj.Name.Visible = false; obj.Health.Visible = false
             for _, b in pairs(obj.Bones) do b.Visible = false end
@@ -576,40 +698,40 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Input Handling
+-- [[ INPUT HANDLING ]] --
 UserInputService.InputBegan:Connect(function(i, p)
     if p then return end
     if i.KeyCode == GlobalSettings.HideAllKey then MainFrame.Visible = not MainFrame.Visible
     elseif i.KeyCode == TeleportSettings.FreeMouseTPKey then
-        if TeleportSettings.Enabled then
-            local char = LocalPlayer.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if hrp and Mouse.Target then hrp.CFrame = Mouse.Hit end
+        if TeleportSettings.Enabled and LocalPlayer.Character then LocalPlayer.Character:PivotTo(CFrame.new(Mouse.Hit.Position) + Vector3.new(0, 3, 0)) end
+    elseif i.KeyCode == TriggerSettings.TriggerKey then
+        if TriggerSettings.MasterEnabled then
+            if TriggerSettings.Mode == "Hold" then TriggerSettings.Active = true else TriggerSettings.Active = not TriggerSettings.Active end
         end
-    elseif i.KeyCode == MagnetSettings.LockKey and MagnetSettings.MasterEnabled then 
-        MagnetSettings.Enabled = not MagnetSettings.Enabled; magTarget = MagnetSettings.Enabled and getMagnetTarget() or nil
-    elseif i.KeyCode == FlameConfig.WalkSpeedKey and FlameConfig.MasterSpeed then 
-        FlameConfig.SpeedActive = not FlameConfig.SpeedActive
-    elseif i.KeyCode == TriggerSettings.TriggerKey then 
-        if TriggerSettings.Mode == "Toggle" then TriggerSettings.Active = not TriggerSettings.Active else TriggerSettings.Active = true end
-    elseif (FlameConfig.UseRightClick and i.UserInputType == Enum.UserInputType.MouseButton2) or (not FlameConfig.UseRightClick and i.KeyCode == FlameConfig.MouseLockKey) then
-        if FlameConfig.MasterLock then
-            if FlameConfig.ActivationType == "Toggle" then FlameConfig.LockActive = not FlameConfig.LockActive; flameTargetPart = FlameConfig.LockActive and getFlameTarget() or nil
-            else FlameConfig.LockActive = true; flameTargetPart = getFlameTarget() end
+    elseif i.KeyCode == MagnetSettings.LockKey then
+        if MagnetSettings.MasterEnabled then
+            MagnetSettings.Enabled = not MagnetSettings.Enabled
+            magTarget = MagnetSettings.Enabled and getMagnetTarget() or nil
         end
+    elseif i.KeyCode == FlameConfig.MouseLockKey then
+        if FlameConfig.MasterLock and not FlameConfig.UseRightClick then
+            if FlameConfig.ActivationType == "Hold" then FlameConfig.LockActive = true else FlameConfig.LockActive = not FlameConfig.LockActive end
+            flameTargetPart = FlameConfig.LockActive and getFlameTarget() or nil
+        end
+    elseif i.UserInputType == Enum.UserInputType.MouseButton2 then
+        if FlameConfig.MasterLock and FlameConfig.UseRightClick then
+            if FlameConfig.ActivationType == "Hold" then FlameConfig.LockActive = true else FlameConfig.LockActive = not FlameConfig.LockActive end
+            flameTargetPart = FlameConfig.LockActive and getFlameTarget() or nil
+        end
+    elseif i.KeyCode == FlameConfig.WalkSpeedKey then
+        if FlameConfig.MasterSpeed then FlameConfig.SpeedActive = not FlameConfig.SpeedActive end
     end
 end)
 
-UserInputService.InputEnded:Connect(function(i)
+UserInputService.InputEnded:Connect(function(i, p)
     if i.KeyCode == TriggerSettings.TriggerKey and TriggerSettings.Mode == "Hold" then TriggerSettings.Active = false
-    elseif (FlameConfig.UseRightClick and i.UserInputType == Enum.UserInputType.MouseButton2) or (not FlameConfig.UseRightClick and i.KeyCode == FlameConfig.MouseLockKey) then
-        if FlameConfig.ActivationType == "Hold" then FlameConfig.LockActive = false end
-    end
-end)
-
-RunService.Heartbeat:Connect(function()
-    if FlameConfig.MasterSpeed and FlameConfig.SpeedActive then
-        local char = LocalPlayer.Character; local hum = char and char:FindFirstChildOfClass("Humanoid")
-        if hum and hum.MoveDirection.Magnitude > 0 then char:TranslateBy(hum.MoveDirection * (FlameConfig.WalkSpeedValue / 100)) end
+    elseif i.KeyCode == FlameConfig.MouseLockKey and FlameConfig.ActivationType == "Hold" then FlameConfig.LockActive = false; flameTargetPart = nil 
+    elseif i.UserInputType == Enum.UserInputType.MouseButton2 and FlameConfig.ActivationType == "Hold" and FlameConfig.UseRightClick then
+        FlameConfig.LockActive = false; flameTargetPart = nil
     end
 end)
